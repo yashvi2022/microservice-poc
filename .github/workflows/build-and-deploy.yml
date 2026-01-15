@@ -1,0 +1,200 @@
+name: Build and Deploy to AKS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  # PLACEHOLDER: Set these in GitHub Secrets
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - name: api-gateway
+            path: ./src/api-gateway
+            image: api-gateway
+          - name: auth-service
+            path: ./src/auth-service
+            image: auth-service
+          - name: task-service
+            path: ./src/task-service
+            image: task-service
+          - name: analytics-service
+            path: ./src/analytics-service
+            image: analytics-service
+          - name: analytics-worker-task
+            path: ./src/analytics-worker-task
+            image: analytics-worker-task
+          - name: analytics-worker-project
+            path: ./src/analytics-worker-project
+            image: analytics-worker-project
+          - name: frontend
+            path: ./src/frontend
+            image: frontend
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: ACR Login
+      run: |
+        az acr login --name ${{ env.ACR_NAME }}
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_TAG=${{ env.ACR_NAME }}.azurecr.io/${{ matrix.service.image }}:${{ github.sha }}
+        IMAGE_LATEST=${{ env.ACR_NAME }}.azurecr.io/${{ matrix.service.image }}:latest
+
+        docker build -t $IMAGE_TAG -t $IMAGE_LATEST ${{ matrix.service.path }}
+        docker push $IMAGE_TAG
+        docker push $IMAGE_LATEST
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set AKS Context
+      uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+        cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
+    - name: Create Namespaces
+      run: |
+        kubectl apply -f k8s/namespaces/
+
+    - name: Deploy Cluster Issuer
+      run: |
+        kubectl apply -f k8s/cert-manager/cluster-issuer.yaml
+
+    - name: Deploy Secrets and ConfigMaps
+      run: |
+        # Deploy secrets and configmaps for all namespaces
+        kubectl apply -f k8s/auth-ns/postgres/secret.yaml
+        kubectl apply -f k8s/auth-ns/auth-service/secret.yaml
+        kubectl apply -f k8s/auth-ns/auth-service/configmap.yaml
+
+        kubectl apply -f k8s/task-ns/task-postgres/secret.yaml
+        kubectl apply -f k8s/task-ns/task-service/secret.yaml
+        kubectl apply -f k8s/task-ns/task-service/configmap.yaml
+
+        kubectl apply -f k8s/analytics-ns/mongo/secret.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-service/secret.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-service/configmap.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-worker-task/secret.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-worker-task/configmap.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-worker-project/secret.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-worker-project/configmap.yaml
+
+        kubectl apply -f k8s/kafka-ns/kafka/configmap.yaml
+
+        kubectl apply -f k8s/gateway-ns/api-gateway/secret.yaml
+        kubectl apply -f k8s/gateway-ns/api-gateway/configmap.yaml
+
+        kubectl apply -f k8s/frontend-ns/frontend/configmap.yaml
+
+        kubectl apply -f k8s/devtools-ns/mongo-express/configmap.yaml
+        kubectl apply -f k8s/devtools-ns/pgadmin/secret.yaml
+        kubectl apply -f k8s/devtools-ns/kafka-ui/configmap.yaml
+
+    - name: Update Deployment Images
+      run: |
+        # Update image references to use ACR with commit SHA
+        ACR_REGISTRY=${{ env.ACR_NAME }}.azurecr.io
+        IMAGE_TAG=${{ github.sha }}
+
+        # Update all deployment files to use the new image
+        sed -i "s|image: api-gateway:latest|image: ${ACR_REGISTRY}/api-gateway:${IMAGE_TAG}|g" k8s/gateway-ns/api-gateway/deployment.yaml
+        sed -i "s|image: auth-service:latest|image: ${ACR_REGISTRY}/auth-service:${IMAGE_TAG}|g" k8s/auth-ns/auth-service/deployment.yaml
+        sed -i "s|image: task-service:latest|image: ${ACR_REGISTRY}/task-service:${IMAGE_TAG}|g" k8s/task-ns/task-service/deployment.yaml
+        sed -i "s|image: analytics-service:latest|image: ${ACR_REGISTRY}/analytics-service:${IMAGE_TAG}|g" k8s/analytics-ns/analytics-service/deployment.yaml
+        sed -i "s|image: analytics-worker-task:latest|image: ${ACR_REGISTRY}/analytics-worker-task:${IMAGE_TAG}|g" k8s/analytics-ns/analytics-worker-task/deployment.yaml
+        sed -i "s|image: analytics-worker-project:latest|image: ${ACR_REGISTRY}/analytics-worker-project:${IMAGE_TAG}|g" k8s/analytics-ns/analytics-worker-project/deployment.yaml
+        sed -i "s|image: frontend:latest|image: ${ACR_REGISTRY}/frontend:${IMAGE_TAG}|g" k8s/frontend-ns/frontend/deployment.yaml
+
+    - name: Deploy StatefulSets
+      run: |
+        kubectl apply -f k8s/auth-ns/postgres/sts.yaml
+        kubectl apply -f k8s/auth-ns/postgres/service.yaml
+
+        kubectl apply -f k8s/task-ns/task-postgres/sts.yaml
+        kubectl apply -f k8s/task-ns/task-postgres/service.yaml
+
+        kubectl apply -f k8s/analytics-ns/mongo/sts.yaml
+        kubectl apply -f k8s/analytics-ns/mongo/service.yaml
+
+        kubectl apply -f k8s/kafka-ns/kafka/sts.yaml
+        kubectl apply -f k8s/kafka-ns/kafka/service.yaml
+
+    # - name: Wait for StatefulSets to be Ready
+    #   run: |
+    #     kubectl wait --for=condition=ready pod -l app=postgres -n auth-ns --timeout=300s
+    #     kubectl wait --for=condition=ready pod -l app=task-postgres -n task-ns --timeout=300s
+    #     kubectl wait --for=condition=ready pod -l app=mongo -n analytics-ns --timeout=300s
+    #     kubectl wait --for=condition=ready pod -l app=kafka -n kafka-ns --timeout=300s
+
+    - name: Deploy Applications
+      run: |
+        kubectl apply -f k8s/auth-ns/auth-service/deployment.yaml
+        kubectl apply -f k8s/auth-ns/auth-service/service.yaml
+
+        kubectl apply -f k8s/task-ns/task-service/deployment.yaml
+        kubectl apply -f k8s/task-ns/task-service/service.yaml
+
+        kubectl apply -f k8s/analytics-ns/analytics-service/deployment.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-service/service.yaml
+
+        kubectl apply -f k8s/analytics-ns/analytics-worker-task/deployment.yaml
+        kubectl apply -f k8s/analytics-ns/analytics-worker-project/deployment.yaml
+
+        kubectl apply -f k8s/gateway-ns/api-gateway/deployment.yaml
+        kubectl apply -f k8s/gateway-ns/api-gateway/service.yaml
+
+        kubectl apply -f k8s/frontend-ns/frontend/deployment.yaml
+        kubectl apply -f k8s/frontend-ns/frontend/service.yaml
+
+        kubectl apply -f k8s/devtools-ns/mongo-express/deployment.yaml
+        kubectl apply -f k8s/devtools-ns/mongo-express/service.yaml
+
+        kubectl apply -f k8s/devtools-ns/pgadmin/deployment.yaml
+        kubectl apply -f k8s/devtools-ns/pgadmin/service.yaml
+
+        kubectl apply -f k8s/devtools-ns/kafka-ui/deployment.yaml
+        kubectl apply -f k8s/devtools-ns/kafka-ui/service.yaml
+
+    - name: Deploy Ingress Resources
+      run: |
+        kubectl apply -f k8s/gateway-ns/api-gateway/ingress.yaml
+        kubectl apply -f k8s/frontend-ns/frontend/ingress.yaml
+        kubectl apply -f k8s/devtools-ns/mongo-express/ingress.yaml
+        kubectl apply -f k8s/devtools-ns/pgadmin/ingress.yaml
+        kubectl apply -f k8s/devtools-ns/kafka-ui/ingress.yaml
+
+    - name: Verify Deployment
+      run: |
+        kubectl get pods -A
+        kubectl get services -A
+        kubectl get ingress -A-

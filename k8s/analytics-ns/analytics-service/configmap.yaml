@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-service-config
+  namespace: analytics-ns
+data:
+  DATABASE_NAME: "analytics"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.kafka-ns.svc.cluster.local:9092"
+  KAFKA_GROUP_ID: "analytics-service"
+  KAFKA_TOPIC_TASK: "task-events"
+  KAFKA_TOPIC_PROJECT: "project-events"
+  JWT_ALGORITHM: "HS256"
+  JWT_AUDIENCE: "polyglot-platform"
+  JWT_ISSUER: "auth-service-docker"

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: gateway-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: api-gateway:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: ASPNETCORE_ENVIRONMENT
+        - name: Jwt__Issuer
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: Jwt__Issuer
+        - name: Jwt__Audience
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: Jwt__Audience
+        - name: Jwt__Key
+          valueFrom:
+            secretKeyRef:
+              name: api-gateway-secret
+              key: jwt-key
+        - name: AuthServiceUrl
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: AuthServiceUrl
+        - name: TaskServiceUrl
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: TaskServiceUrl

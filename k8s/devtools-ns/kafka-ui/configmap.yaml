@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-ui-config
+  namespace: devtools-ns
+data:
+  KAFKA_CLUSTERS_0_NAME: "local"
+  KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka.kafka-ns.svc.cluster.local:9092"

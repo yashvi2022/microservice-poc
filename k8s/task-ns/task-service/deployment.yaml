@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: task-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-service
+  template:
+    metadata:
+      labels:
+        app: task-service
+    spec:
+      containers:
+      - name: task-service
+        image: task-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: DB_DSN
+          valueFrom:
+            secretKeyRef:
+              name: task-service-secret
+              key: db-dsn
+        - name: KAFKA_BROKER
+          valueFrom:
+            configMapKeyRef:
+              name: task-service-config
+              key: KAFKA_BROKER
+        - name: KAFKA_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: task-service-config
+              key: KAFKA_TOPIC
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: task-service-config
+              key: PORT
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3

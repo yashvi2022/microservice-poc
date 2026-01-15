@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: task-postgres
+  namespace: task-ns
+spec:
+  serviceName: task-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-postgres
+  template:
+    metadata:
+      labels:
+        app: task-postgres
+    spec:
+      containers:
+      - name: task-postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: task-postgres-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: task-postgres-secret
+              key: POSTGRES_DB
+        volumeMounts:
+        - name: task-postgres-data
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U taskuser -d taskdb
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U taskuser -d taskdb
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+  volumeClaimTemplates:
+  - metadata:
+      name: task-postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed
+      resources:
+        requests:
+          storage: 1Gi

@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-worker-task
+  namespace: analytics-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics-worker-task
+  template:
+    metadata:
+      labels:
+        app: analytics-worker-task
+    spec:
+      containers:
+      - name: analytics-worker-task
+        image: analytics-worker-task:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: analytics-worker-task-secret
+              key: MONGODB_URL
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: analytics-worker-task-config
+              key: DATABASE_NAME
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: analytics-worker-task-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: KAFKA_GROUP_ID
+          valueFrom:
+            configMapKeyRef:
+              name: analytics-worker-task-config
+              key: KAFKA_GROUP_ID
+        - name: KAFKA_TOPIC_TASK
+          valueFrom:
+            configMapKeyRef:
+              name: analytics-worker-task-config
+              key: KAFKA_TOPIC_TASK
+      restartPolicy: Always

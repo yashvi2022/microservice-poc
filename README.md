@@ -1,0 +1,172 @@
+![polygot microservices](/assets/polygot-microservices.png)
+# Polyglot Microservices Platform
+
+This project is a **showcase system** demonstrating modern software
+architecture with a **polyglot stack.**
+- **.NET (C#)** → API Gateway & Authentication
+- **Go** → Task Service (high-performance event-driven service)
+- **Python** → Analytics Service (data processing, reporting)
+- **Sveltekit** → Frontend
+
+It is designed to highlight skills in **distributed systems,
+microservices, DevOps, and clean code**.
+
+------------------------------------------------------------------------
+
+## 🔹 Quickstart
+
+If you just quick want to see it all in action
+
+```bash
+docker compose up -d
+```
+
+And then go to: [http://localhost:3000](http://localhost:3000)
+
+------------------------------------------------------------------------
+
+## 🔹 Demo
+
+Below is a small gif showing startup and stack in action.
+
+Recap: 
+* Frontend is hosted on it's own port outside the API gateway.
+* All API calls is hitting API gateway and is redirected to corresponding API (Task, Auth, Analytics).
+* When a Project and Task is created, it's stored in Postgres and a event is sent to KAFKA.
+* There is an Analytics worker server, that listens for new events on projects / tasks.
+    * When an event is consumed it stores the event in it's own database and also updates project / task / user metrics.
+
+
+![demo](/assets/demo.gif)
+
+------------------------------------------------------------------------
+
+## 🔹 Architecture
+
+``` mermaid
+flowchart LR
+    subgraph Client
+        UI[Frontend - Sveltekit]
+    end
+
+    subgraph Gateway[API Gateway - .NET]
+        AUTH[Auth Service - .NET]
+        TASKS[Task Service - Go]
+        ANALYTICS[Analytics Service - Python]
+        AUTH -->|stores| PGA[(Postgres)]
+        TASKS -->|stores| PGB[(Postgres)]
+        TASKS -->|publishes| MQ[(Kafka)]
+        MQ --> ANALYTICS
+        ANALYTICS -->|stores| MDB[(MongoDB)]
+    end
+
+    UI --> Gateway
+
+    Gateway --> AUTH
+    Gateway --> TASKS
+    Gateway --> ANALYTICS
+
+```
+
+------------------------------------------------------------------------
+
+## 🔹 Services
+
+### API Gateway (.NET 9, YARP)
+
+-   Routes requests to internal services
+-   Handles JWT authentication & rate limiting
+
+### Auth Service (.NET 9)
+
+-   User registration & authentication
+-   Issues JWT tokens
+-   Stores user data in PostgreSQL
+
+### Task Service (Go)
+
+-   Manages projects and tasks (CRUD)
+-   Publishes events (`task_created`, `task_updated`) to Kafka
+-   Stores data in PostgreSQL
+
+### Analytics Service (Python, FastAPI)
+
+-   Computes analytics (task counts, completion times, etc.)
+-   Exposes REST API for dashboards
+
+### Analytics Worker (Python)
+
+-   Consumes events from Kafka
+-   Stores results in MongoDB
+
+### Frontend (Sveltekit)
+
+-   Small Webclient to call all API endpoints
+-   Developer tool page, describing the solution and tools
+
+
+------------------------------------------------------------------------
+
+## 🔹 Infrastructure
+
+-   **Databases**: PostgreSQL, MongoDB
+-   **Message Broker**: Kafka
+-   **Containerization**: Docker
+
+------------------------------------------------------------------------
+
+## 🔹 Getting Started
+
+### Prerequisites
+
+-   Docker & Docker Compose\
+-   .NET 9 SDK\
+-   Go 1.22+\
+-   Python 3.11+
+
+### Run Locally (Docker Compose)
+
+``` bash
+docker compose up --build
+```
+
+------------------------------------------------------------------------
+
+## 🔹 Project overview
+
+    polyglot-microservices/
+    │── src/frontend/             # Sveltekit
+    │── src/api-gateway/          # .NET API Gateway
+    │── src/auth-service/         # .NET Auth Service
+    │── src/task-service/         # Go Task Service
+    │── src/analytics-service/    # Python Analytics API
+    │── src/analytics-worker/     # Python Analytics Kafka consumer / worker
+    │── assets/*                  # Static assets - logos, gifs and images
+    │── docs/*                    # Documentation - Architectural Decision Records and Planning in Markdown format
+    │── docker-compose.yml        # Docker compose file, for quickly spinning up entire solution
+    │── README.md                 # Github repository intro and getting started
+
+
+------------------------------------------------------------------------
+
+## 🔹 License
+
+TODO
+
+## 🔹 Roadmap
+
+* License
+* Cleanup
+    * .http files
+    * outdated tests
+    * Documentation and copilot-instructions.md
+* Better Domain Driven Design across codebase.
+
+## 🔹 Ideas / Nice to have
+
+* Authentication Events (UserRegisteredEvent, UserLoggedInEvent, etc.) (Using Postgres Kafka connector! :D)
+* Opentelemetry across the stack
+* Tests
+* Fix known bugs. Eg. Complete a task and open it again doesn't update the metrics count, so you are able to get > 100% completed tasks :D Also Analytics page is broken until some data has been created
+* Kafka Schema registry
+* Contribution

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: auth-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: auth-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: auth-service-config
+              key: ASPNETCORE_ENVIRONMENT
+        - name: ConnectionStrings__Default
+          valueFrom:
+            secretKeyRef:
+              name: auth-service-secret
+              key: connection-string
+        - name: Jwt__Key
+          valueFrom:
+            secretKeyRef:
+              name: auth-service-secret
+              key: jwt-key
+        - name: Jwt__Issuer
+          valueFrom:
+            configMapKeyRef:
+              name: auth-service-config
+              key: Jwt__Issuer
+        - name: Jwt__Audience
+          valueFrom:
+            configMapKeyRef:
+              name: auth-service-config
+              key: Jwt__Audience

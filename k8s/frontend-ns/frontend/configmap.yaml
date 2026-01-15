@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: frontend-ns
+data:
+  VITE_API_BASE: "http://api-gateway.gateway-ns.svc.cluster.local:80"

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: kafka-ns
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - name: kafka
+        image: redpandadata/redpanda:v24.2.10
+        command:
+        - /bin/bash
+        - -c
+        - |
+          redpanda start \
+            --overprovisioned \
+            --smp 1 \
+            --memory 512M \
+            --reserve-memory 0M \
+            --node-id 1 \
+            --kafka-addr PLAINTEXT://0.0.0.0:9092 \
+            --advertise-kafka-addr PLAINTEXT://kafka.kafka-ns.svc.cluster.local:9092 \
+            --pandaproxy-addr 0.0.0.0:8082 \
+            --advertise-pandaproxy-addr kafka.kafka-ns.svc.cluster.local:8082 \
+            --rpc-addr 0.0.0.0:33145 \
+            --advertise-rpc-addr kafka.kafka-ns.svc.cluster.local:33145 \
+            --set redpanda.auto_create_topics_enabled=true
+        ports:
+        - containerPort: 9092
+          name: kafka
+        - containerPort: 8082
+          name: pandaproxy
+        - containerPort: 33145
+          name: rpc
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /var/lib/redpanda/data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - rpk cluster info || exit 1
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - rpk cluster info || exit 1
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: kafka-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed
+      resources:
+        requests:
+          storage: 2Gi
